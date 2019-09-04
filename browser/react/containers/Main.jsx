@@ -1,35 +1,38 @@
-import React from 'react';
-import axios from 'axios';
-import { Route, Redirect, Switch } from 'react-router-dom';
-import Sidebar from '../components/Sidebar';
-import Player from '../components/Player';
-import Albums from '../components/Albums';
-import SingleAlbum from '../components/SingleAlbum';
-import audio from '../audio';
-import FilterableArtistsContainer from './FilterableArtistsContainer';
-import Artist from '../components/Artist';
-import Playlist from '../components/Playlist';
-import NewPlaylistContainer from '../containers/NewPlaylistContainer';
+import React from "react";
+import axios from "axios";
+import { Route, Redirect, Switch } from "react-router-dom";
+import Sidebar from "../components/Sidebar";
+import Player from "../components/Player";
+import Albums from "../components/Albums";
+import SingleAlbum from "../components/SingleAlbum";
+import audio from "../audio";
+import FilterableArtistsContainer from "./FilterableArtistsContainer";
+import Artist from "../components/Artist";
+import Playlist from "../components/Playlist";
+import NewPlaylistContainer from "../containers/NewPlaylistContainer";
 
 export default class Main extends React.Component {
-  constructor(props){
+  constructor(props) {
     super(props);
-    this.state = {
-      albums: [],
-      selectedAlbum: {},
-      currentSong: {},
-      isPlaying: false,
-      currentSongList: [],
-      progress: 0,
-      artists: [],
-      selectedArtist: {
-        name: '',
+    this.state = Object.assign(
+      {
         albums: [],
-        songs: []
+        selectedAlbum: {},
+        currentSong: {},
+        isPlaying: false,
+        currentSongList: [],
+        progress: 0,
+        artists: [],
+        selectedArtist: {
+          name: "",
+          albums: [],
+          songs: []
+        },
+        playlists: [],
+        selectedPlaylist: {}
       },
-      playlists: [],
-      selectedPlaylist: {},
-    };
+      store.getState()
+    );
     this.selectAlbum = this.selectAlbum.bind(this);
     this.start = this.start.bind(this);
     this.play = this.play.bind(this);
@@ -41,74 +44,90 @@ export default class Main extends React.Component {
     this.selectPlaylist = this.selectPlaylist.bind(this);
     this.addSong = this.addSong.bind(this);
   }
-  
-  componentDidMount() {
-    axios.get('/api/albums')
-      .then(res => res.data)
-      .then(albums => this.setState({ albums }));
 
-    axios.get('/api/artists')
+  componentDidMount() {
+    (this.unsubscribe = store.subscribe(() => {
+      this.setState(store.getState());
+    })),
+      axios
+        .get("/api/albums")
+        .then(res => res.data)
+        .then(albums => this.setState({ albums }));
+
+    axios
+      .get("/api/artists")
       .then(res => res.data)
       .then(artists => this.setState({ artists }));
-    
-    axios.get('/api/playlists')
+
+    axios
+      .get("/api/playlists")
       .then(res => res.data)
       .then(playlists => this.setState({ playlists }));
 
-    audio.addEventListener('ended', () => {
+    audio.addEventListener("ended", () => {
       this.next();
     });
-    audio.addEventListener('timeupdate', () => {
+    audio.addEventListener("timeupdate", () => {
       this.setState({
-        progress: 100 * audio.currentTime / audio.duration
+        progress: (100 * audio.currentTime) / audio.duration
       });
     });
   }
-  
   selectAlbum(albumId) {
-    axios.get(`/api/albums/${albumId}`)
+    axios
+      .get(`/api/albums/${albumId}`)
       .then(res => res.data)
       .then(serverAlbum => this.setState({ selectedAlbum: serverAlbum }));
   }
 
   selectArtist(artistId) {
-    const artistPromise = axios.get(`/api/artists/${artistId}`).then(res => res.data);
-    const songsPromise = axios.get(`/api/artists/${artistId}/songs`).then(res => res.data);
-    const albumsPromise = axios.get(`/api/artists/${artistId}/albums`).then(res => res.data);
-    Promise.all([artistPromise, songsPromise, albumsPromise])
-      .then(([artist, songs, albums]) =>
+    const artistPromise = axios
+      .get(`/api/artists/${artistId}`)
+      .then(res => res.data);
+    const songsPromise = axios
+      .get(`/api/artists/${artistId}/songs`)
+      .then(res => res.data);
+    const albumsPromise = axios
+      .get(`/api/artists/${artistId}/albums`)
+      .then(res => res.data);
+    Promise.all([artistPromise, songsPromise, albumsPromise]).then(
+      ([artist, songs, albums]) =>
         this.setState({
           selectedArtist: {
             name: artist.name,
             albums,
-            songs,
+            songs
           }
-        }));
+        })
+    );
   }
 
   selectPlaylist(playlistId) {
-    axios.get(`/api/playlists/${playlistId}`)
+    axios
+      .get(`/api/playlists/${playlistId}`)
       .then(res => res.data)
       .then(playlist => {
         this.setState({
-          selectedPlaylist: playlist,
+          selectedPlaylist: playlist
         });
       });
   }
 
   addPlaylist(name) {
-    axios.post('/api/playlists', { name })
+    axios
+      .post("/api/playlists", { name })
       .then(res => res.data)
       .then(playlist => {
         this.setState({
           playlists: [playlist, ...this.state.playlists]
         });
-        this.props.history.push(`/playlists/${playlist.id}`)
+        this.props.history.push(`/playlists/${playlist.id}`);
       });
   }
 
   addSong(id) {
-    return axios.post(`/api/playlists/${this.state.selectedPlaylist.id}/songs`, { id })
+    return axios
+      .post(`/api/playlists/${this.state.selectedPlaylist.id}/songs`, { id })
       .then(res => res.data)
       .then(song => {
         this.setState({
@@ -119,53 +138,24 @@ export default class Main extends React.Component {
         });
       });
   }
-  start(song, songs) {
-    this.setState({ currentSong: song, currentSongList: songs })
-    this.loadSong(song.audioUrl);
+  start(song, list) {
+    store.dispatch(start(song, list));
   }
-
-  loadSong(audioUrl) {
-    audio.src = audioUrl;
-    audio.load();
-    this.play();
-  }
-
   play() {
-    audio.play();
-    this.setState({ isPlaying: true })
+    store.dispatch(play());
   }
-
   pause() {
-    audio.pause();
-    this.setState({ isPlaying: false })
+    store.dispatch(pause());
   }
-  
-  findSongIndex() {
-    return this.state.currentSongList.findIndex(song => song.id === this.state.currentSong.id);
-  }
-
   next() {
-    let index = this.findSongIndex() + 1;
-    if (index >= this.state.currentSongList.length) {
-      index = 0 
-    }
-    const song = this.state.currentSongList[index];
-    this.setState({ currentSong: song })
-    this.loadSong(song.audioUrl)
+    store.dispatch(next());
   }
-
   previous() {
-    let index = this.findSongIndex() - 1;
-    if (index < 0) {
-      index = this.state.currentSongList.length - 1 
-    }
-    const song = this.state.currentSongList[index];
-    this.setState({ currentSong: song })
-    this.loadSong(song.audioUrl)
+    store.dispatch(next());
   }
 
   render() {
-    const  {
+    const {
       albums,
       selectedAlbum,
       currentSong,
@@ -174,55 +164,75 @@ export default class Main extends React.Component {
       artists,
       selectedArtist,
       playlists,
-      selectedPlaylist,
+      selectedPlaylist
     } = this.state;
     return (
       <div id="main" className="container-fluid">
         <Sidebar playlists={playlists} />
         <div className="col-xs-10">
           <Switch>
-            <Route exact path="/albums" render={() => <Albums albums={albums} /> } />
             <Route
-              path="/albums/:id" 
+              exact
+              path="/albums"
+              render={() => <Albums albums={albums} />}
+            />
+            <Route
+              path="/albums/:id"
               render={({ match }) => (
-                <SingleAlbum 
+                <SingleAlbum
                   selectAlbum={this.selectAlbum}
                   currentSong={currentSong}
                   start={this.start}
-                  album={selectedAlbum} 
-                  albumId={match.params.id} 
+                  album={selectedAlbum}
+                  albumId={match.params.id}
                 />
-              )} 
+              )}
             />
-            <Route path="/artists" exact render={() => <FilterableArtistsContainer artists={artists} />} />
-            <Route path="/artists/:id" render={({ match }) => 
-              <Artist
-                artistId={match.params.id}
-                url={match.url}
-                path={match.path}
-                artist={selectedArtist}
-                start={this.start}
-                currentSong={currentSong}
-                selectArtist={this.selectArtist} />}
-              />
-            <Route path="/playlists/new" render={() => <NewPlaylistContainer addPlaylist={this.addPlaylist} />} />
-            <Route path="/playlists/:id" render={({ match }) =>
-              <Playlist
-                playlistId={match.params.id}
-                playlist={selectedPlaylist}
-                start={this.start}
-                currentSong={currentSong}
-                selectPlaylist={this.selectPlaylist}
-                addSong={this.addSong}
-              />} 
+            <Route
+              path="/artists"
+              exact
+              render={() => <FilterableArtistsContainer artists={artists} />}
+            />
+            <Route
+              path="/artists/:id"
+              render={({ match }) => (
+                <Artist
+                  artistId={match.params.id}
+                  url={match.url}
+                  path={match.path}
+                  artist={selectedArtist}
+                  start={this.start}
+                  currentSong={currentSong}
+                  selectArtist={this.selectArtist}
+                />
+              )}
+            />
+            <Route
+              path="/playlists/new"
+              render={() => (
+                <NewPlaylistContainer addPlaylist={this.addPlaylist} />
+              )}
+            />
+            <Route
+              path="/playlists/:id"
+              render={({ match }) => (
+                <Playlist
+                  playlistId={match.params.id}
+                  playlist={selectedPlaylist}
+                  start={this.start}
+                  currentSong={currentSong}
+                  selectPlaylist={this.selectPlaylist}
+                  addSong={this.addSong}
+                />
+              )}
             />
             <Redirect from="/" to="/albums" />
           </Switch>
         </div>
-        <Player 
+        <Player
           currentSong={currentSong}
-          isPlaying={isPlaying} 
-          play={this.play} 
+          isPlaying={isPlaying}
+          play={this.play}
           pause={this.pause}
           next={this.next}
           previous={this.previous}
@@ -231,4 +241,4 @@ export default class Main extends React.Component {
       </div>
     );
   }
-};
+}
